@@ -3,21 +3,22 @@
 import socket, sys, random
 from struct import *
 
-# calculate the TCP checksum (IP checksum is calculated by the kernel)
 def tcp_checksum(full_tcp):
-    start_bit = 0
-    for i in range(0, len(full_tcp), 2):
-        two_bits = (full_tcp[i]) + ((full_tcp[i+1]) << 8 )
-        start_bit = start_bit + two_bits
-    start_bit = (start_bit >> 16) + (start_bit & 0xffff);
-    start_bit = start_bit + (start_bit >> 16);
-	#complement and mask to 4 byte short
-    start_bit = ~start_bit & 0xffff
-    return start_bit
+    values = full_tcp
+    #values = map(ord,full_tcp)
+    #values = list(values)
+    #print(values)
+
+    return len(values)
+
+    # if ((len(values)>>1)<<1) != len(values):
+    #     values.append(0) # odd length
+    #     s = sum([values[i]+(values[i+1]< 0xffff)])
+    #     s = (s>>16) + (s & 0xffff)
+    #     return s ^ 0xffff;
 
 class packet:
     def __init__(tcp):
-
 
         tcp.source_ip = input('Provide Source IP address (Enter for default 192.168.1.1)') or '192.168.1.99';
         tcp.dest_ip = input('Provide Destination IP address (Enter for default 192.168.1.2)') or '192.168.1.2';
@@ -80,8 +81,6 @@ def main():
         # the ! in the pack format string means network order
         ip_header = pack('!BBHHHBBH4s4s' , ip_ihl_ver, ip_tos, ip_tot_len, ip_id, ip_frag_off, ip_ttl, ip_proto, ip_check, ip_saddr, ip_daddr)
 
-
-
         tcp_offset_res = (tcp.doff << 4) + 0
         tcp_flags = tcp.fin + (tcp.syn << 1) + (tcp.rst << 2) + (tcp.psh << 3) + (tcp.ack << 4) + (tcp.urg << 5)
 
@@ -104,7 +103,6 @@ def main():
         #Create the header again with full checksum
         tcp_header = pack('!HHLLBBH' , tcp.source, tcp.dest, tcp.seq, tcp.ack_seq, tcp_offset_res, tcp_flags,  tcp.window) + pack('H' , tcp_check) + pack('!H' , tcp.urg_ptr)
 
-        #
         packet = ip_header + tcp_header + user_data
 
         s.sendto(packet,(tcp.dest_ip , 0))
