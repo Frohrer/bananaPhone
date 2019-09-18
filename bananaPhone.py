@@ -2,13 +2,24 @@
 # Partial code from https://www.binarytides.com/raw-socket-programming-in-python-linux/
 import socket, sys, random
 import argparse, os
+from cryptography.fernet import Fernet
 from struct import *
 
 argParser = argparse.ArgumentParser(description='Send custom TCP packets.')
 argParser.add_argument('dest', nargs=1, help='The destination IPv4 address')
 argParser.add_argument('-i', dest='i', nargs=1, help='Location of file with data to send.')
+argParser.add_argument('-r', dest='r', action='store_true', help='Randomize outgoing and incoming port for each packet to avoid detection.')
+argParser.add_argument('-e', dest='e', action='store_true', help='Encrypt packet body using SHA256.')
 
 args = argParser.parse_args()
+
+# key = Fernet.generate_key()
+key = b'M7Mu5Mg62Hc36oPbhMfx5GW7mb5BejU7a2SYdHlb3Uo='
+cipher_suite = Fernet(key)
+
+def encrypt(string):
+    return cipher_suite.encrypt(string)
+    # decoded_text = cipher_suite.decrypt(encoded_text)
 
 def tcp_checksum(full_tcp):
     values = full_tcp
@@ -33,14 +44,19 @@ class packet:
             tcp.dest_ip = input('Provide Destination IP address (Enter for default 192.168.1.2)') or '192.168.1.2';
 
         tcp.source_ip = input('Provide Source IP address (Enter for default 192.168.1.99)') or '192.168.1.99';
-        tcp.source = int(input('Source Port (Enter for 1234)') or '1234'); # Source port
-        tcp.dest = int(input('Destination Port (Enter for 80)') or 80); # Destination port
+
+        if args.r:
+            print('Using random source and destination port numbers (above 1024)')
+        else:
+            tcp.source = int(input('Source Port (Enter for 1234)') or '1234'); # Source port
+            tcp.dest = int(input('Destination Port (Enter for 80)') or 80); # Destination port
+
         tcp.seq = int(input('TCP Sequence Number (Enter for 0)') or 0); # TCP sequence number
         tcp.ack_seq = 0 # Acknlowdege sequence number
         tcp.doff = 5	#4 bit field, size of tcp header, 5 * 4 = 20 bytes
         #tcp flags
         tcp.fin = int(input('FIN flag (Enter to set to 0)') or 0);
-        tcp.syn = int(input('SYN flag (Enter to set to 0)') or 0);
+        tcp.syn = int(input('SYN flag (Enter to set to 1)') or 1);
         tcp.rst = int(input('RST flag (Enter to set to 0)') or 0);
         tcp.psh = 0 #PSH is for escalating a packet to layer 4 immediately (no further data should be collected by layer 3)
         tcp.ack = int(input('ACK flag (Enter to set to 0)') or 0);
@@ -64,8 +80,9 @@ def main(args):
     bodyfromFile = []
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
-        print('\n\n\n\n *** BananaPhone Version 1.0 *** \n\n (C) Frederic Rohrer \n\n Did you confuse your Wireshark today? \n\n Use at own discretion! No warranty or help if you break anything.\n\n');
-        print(' BananaPhone Version 1.0 initialized. \n Socket was created. Now filling in TCP Header information.')
+        print('\n\n\n\n*** BananaPhone Version 1.2 *** \n\n (C) Frederic Rohrer \n\n Did you confuse your Wireshark today? \n\n Use at own discretion! No warranty or help if you break anything.\n\n');
+        print('BananaPhone Version 1.2 initialized. \n Socket was created. Now filling in TCP Header information.')
+        print('--- Encryption Key initialized ---\n',key.decode('utf-8'),'\n')
     except socket.error:
     	print('BananaPhone failed to initialize: Socket could not be created. Make sure you are running as root/sudo.')
     	sys.exit()
@@ -111,6 +128,9 @@ def main(args):
         tcp_offset_res = (tcp.doff << 4) + 0
         tcp_flags = tcp.fin + (tcp.syn << 1) + (tcp.rst << 2) + (tcp.psh << 3) + (tcp.ack << 4) + (tcp.urg << 5)
 
+        if args.r:
+            tcp.source = random.randint(1024,54000)
+            tcp.dest = random.randint(1024,54000)
         # the ! in the pack format string means network order
         tcp_header = pack('!HHLLBBHHH' , tcp.source, tcp.dest, tcp.seq, tcp.ack_seq, tcp_offset_res, tcp_flags,  tcp.window, tcp.check, tcp.urg_ptr)
 
@@ -118,6 +138,9 @@ def main(args):
             user_data = str.encode(bodyfromFile[loop])
         else:
             user_data = b'BananaPhone calls you!'
+
+        if args.e:
+            user_data = encrypt(user_data)
 
         #Insert header fields
         source_address = socket.inet_aton(tcp.source_ip)
