@@ -1,7 +1,14 @@
 # Created by Frederic Rohrer for Python 3
 # Partial code from https://www.binarytides.com/raw-socket-programming-in-python-linux/
 import socket, sys, random
+import argparse, os
 from struct import *
+
+argParser = argparse.ArgumentParser(description='Send custom TCP packets.')
+argParser.add_argument('dest', nargs=1, help='The destination IPv4 address')
+argParser.add_argument('-i', dest='i', nargs=1, help='Location of file with data to send.')
+
+args = argParser.parse_args()
 
 def tcp_checksum(full_tcp):
     values = full_tcp
@@ -20,8 +27,12 @@ def tcp_checksum(full_tcp):
 class packet:
     def __init__(tcp):
 
-        tcp.source_ip = input('Provide Source IP address (Enter for default 192.168.1.1)') or '192.168.1.99';
-        tcp.dest_ip = input('Provide Destination IP address (Enter for default 192.168.1.2)') or '192.168.1.2';
+        if args.dest[0]:
+            tcp.dest_ip = args.dest[0]
+        else:
+            tcp.dest_ip = input('Provide Destination IP address (Enter for default 192.168.1.2)') or '192.168.1.2';
+
+        tcp.source_ip = input('Provide Source IP address (Enter for default 192.168.1.99)') or '192.168.1.99';
         tcp.source = int(input('Source Port (Enter for 1234)') or '1234'); # Source port
         tcp.dest = int(input('Destination Port (Enter for 80)') or 80); # Destination port
         tcp.seq = int(input('TCP Sequence Number (Enter for 0)') or 0); # TCP sequence number
@@ -38,15 +49,19 @@ class packet:
         tcp.check = 0
         tcp.urg_ptr = 0
 
-        tcp.limit = int(input('How often should this packet be sent? (Enter for once)') or 1);
+        if args.i:
+            print('Not asking for number of packets to send since a file will be sent.')
+            tcp.limit = 1
+        else:
+            tcp.limit = int(input('How often should this packet be sent? (Enter for once)') or 1);
         tcp.real = input('Should this packet use incremental sequence numbers? (y/N)') or 'n';
 
-def loadInput():
+def loadInput(args):
     return packet();
 
-def main():
+def main(args):
     packet = ''; # Initialize packet as string, later we will use pack() to add packet header bits to it
-
+    bodyfromFile = []
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
         print('\n\n\n\n *** BananaPhone Version 1.0 *** \n\n (C) Frederic Rohrer \n\n Did you confuse your Wireshark today? \n\n Use at own discretion! No warranty or help if you break anything.\n\n');
@@ -55,8 +70,16 @@ def main():
     	print('BananaPhone failed to initialize: Socket could not be created. Make sure you are running as root/sudo.')
     	sys.exit()
 
+    if args.i:
+        print('Reading',args.i[0])
+        filepath = args.i[0]
+        if not os.path.isfile(filepath):
+            print('Having trouble reading this file.')
+        else:
+            with open(filepath) as fp:
+               bodyfromFile = fp.readlines()
 
-    tcp = loadInput() #load the user input data
+    tcp = loadInput(args) #load the user input data
 
     # ip header fields
     ip_ihl = 5 # Internet Header Length
@@ -71,8 +94,12 @@ def main():
     ip_saddr = socket.inet_aton ( tcp.source_ip ) # Source IP (can be spoofed)
     ip_daddr = socket.inet_aton ( tcp.dest_ip ) # Destination IP
 
-
     loop = 0;
+
+    if len(bodyfromFile) == 0:
+        tcp.limit = 1
+    else:
+        tcp.limit = len(bodyfromFile)
 
     while loop < tcp.limit:
 
@@ -87,7 +114,10 @@ def main():
         # the ! in the pack format string means network order
         tcp_header = pack('!HHLLBBHHH' , tcp.source, tcp.dest, tcp.seq, tcp.ack_seq, tcp_offset_res, tcp_flags,  tcp.window, tcp.check, tcp.urg_ptr)
 
-        user_data = b'Ring ring ring Banana Phone!';
+        if len(bodyfromFile) > 0:
+            user_data = str.encode(bodyfromFile[loop])
+        else:
+            user_data = b'BananaPhone calls you!'
 
         #Insert header fields
         source_address = socket.inet_aton(tcp.source_ip)
@@ -115,4 +145,4 @@ def main():
                 print('...')
 
     print('Done.',loop,'packets were sent.')
-main()
+main(args)
